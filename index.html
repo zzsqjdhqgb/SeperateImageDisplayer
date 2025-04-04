@@ -111,6 +111,53 @@
             background: #2196F3;
             cursor: pointer;
         }
+
+        /* 版权信息默认仅显示半透明 © 图标，悬停时放大显示全部内容 */
+        copyright {
+            /* 确保兼容性，为了保证选择器生效，使用类选择器 */
+        }
+
+        .copyright {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            padding: 3px;
+            border-radius: 12px;
+            font-size: 12px;
+            z-index: 999;
+            font-family: sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            overflow: hidden;
+            white-space: nowrap;
+            max-width: 24px;
+            /* 默认仅显示图标 */
+        }
+
+        .copyright .icon {
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        .copyright .content {
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 8px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .copyright:hover {
+            max-width: 400px;
+            /* 悬停时自动扩展 */
+            padding: 6px 14px;
+        }
+
+        .copyright:hover .content {
+            opacity: 1;
+        }
     </style>
 </head>
 
@@ -128,6 +175,15 @@
         <div class="view-container" id="view2">
             <iframe src="./img-viewer.html"></iframe>
         </div>
+    </div>
+
+    <div class="copyright">
+        <span class="icon">&nbsp;©&nbsp;</span>
+        <span class="content">
+            2025 Released under the <a href="https://github.com/zzsqjdhqgb/SeperateImageDisplayer/blob/main/LICENSE" target="_blank">GPLv3
+                License</a> ·
+            <a href="https://github.com/zzsqjdhqgb/SeperateImageDisplayer" target="_blank">View on GitHub</a>
+        </span>
     </div>
 
     <script>
