@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>图片查看器</title>
+    <style>
+        * {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background-color: #f5f5f5;
+        }
+
+        .image-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+            border: 2px dashed #ccc;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+
+        .image-container.drag-over {
+            border-color: #4CAF50;
+        }
+
+        .image-container.empty::before {
+            content: "拖拽到此处上传";
+            color: #888;
+            font-size: 24px;
+            position: absolute;
+        }
+
+        #displayed-image {
+            max-width: 100%;
+            max-height: 100%;
+            cursor: move;
+            /* transition: transform 0.1s; */
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .floating-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        button {
+            padding: 12px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            /* transition: all 0.3s; */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button:hover {
+            background-color: #45a049;
+            transform: scale(1.1);
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            flex-direction: column;
+            z-index: 100;
+        }
+
+        .zoom-controls button {
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="image-container empty" id="image-container">
+            <img id="displayed-image" draggable="false" style="display: none;">
+        </div>
+
+        <div class="zoom-controls">
+            <button id="zoom-in" title="放大">+</button>
+            <button id="zoom-out" title="缩小">-</button>
+            <button id="reset-zoom" title="重置">↻</button>
+        </div>
+
+        <div class="floating-controls">
+            <button id="clear-btn" title="清除">×</button>
+            <button id="upload-btn" title="上传">↑</button>
+            <button id="paste-btn" title="粘贴">⎘</button>
+            <input type="file" id="file-input" accept="image/*">
+        </div>
+    </div>
+
+    <script>
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const imageContainer = document.getElementById('image-container');
+            const displayedImage = document.getElementById('displayed-image');
+            const clearBtn = document.getElementById('clear-btn');
+            const uploadBtn = document.getElementById('upload-btn');
+            const pasteBtn = document.getElementById('paste-btn');
+            const fileInput = document.getElementById('file-input');
+            const zoomInBtn = document.getElementById('zoom-in');
+            const zoomOutBtn = document.getElementById('zoom-out');
+            const resetZoomBtn = document.getElementById('reset-zoom');
+        // 禁用浏览器缩放
+            document.addEventListener('wheel', function (e) {
+                if (e.ctrlKey) {
+                    // if zoom big
+                    if (e.deltaY < 0) {
+                        zoomInBtn.click();
+                    } else {
+                        zoomOutBtn.click();
+                    }
+                    e.preventDefault();
+                }
+            }, { passive: false });
+
+            document.addEventListener('keydown', function (e) {
+                if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '0')) {
+                    e.preventDefault();
+                }
+            });
+
+            // bind Ctrl + v to paste
+            document.addEventListener('keydown', function (e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                    e.preventDefault();
+                    pasteBtn.click();
+                }
+            });
+
+            // bind Ctrl + o to upload
+            document.addEventListener('keydown', function (e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+                    uploadBtn.click();
+                    e.preventDefault();
+                }
+            });
+
+            // bind delete to clear
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Delete') {
+                    clearBtn.click();
+                    e.preventDefault();
+                }
+            });
+
+            let scale = 1;
+            let isDragging = false;
+            let startX, startY, translateX = 0, translateY = 0;
+
+            function hasImage() {
+                return displayedImage.src && displayedImage.src !== '';
+            }
+
+
+            // 检查是否有图片
+            function updateUI() {
+                if (hasImage()) {
+                    imageContainer.classList.remove('empty');
+                    clearBtn.disabled = false;
+                    clearBtn.style.display = 'flex';
+                    uploadBtn.style.display = 'none';
+                    pasteBtn.style.display = 'none';
+                } else {
+                    imageContainer.classList.add('empty');
+                    // clearBtn.disabled = true;
+                    clearBtn.style.display = 'none';
+                    uploadBtn.style.display = 'flex';
+                    pasteBtn.style.display = 'flex';
+                }
+            }
+
+            // 显示图片
+            function displayImage(imageData) {
+                displayedImage.src = imageData;
+                displayedImage.style.display = 'block';
+                resetImageState();
+                updateUI();
+            }
+
+            // 重置图片状态
+            function resetImageState() {
+                scale = 1;
+                translateX = 0;
+                translateY = 0;
+                updateImageTransform();
+            }
+
+            // 清除图片
+            clearBtn.addEventListener('click', function () {
+                displayedImage.removeAttribute('src');
+                displayedImage.style.display = 'none';
+                resetImageState();
+                updateUI();
+            });
+
+            // 上传图片
+            uploadBtn.addEventListener('click', function () {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', function (e) {
+                if (e.target.files && e.target.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = function (event) {
+                        displayImage(event.target.result);
+                    };
+                    reader.readAsDataURL(e.target.files[0]);
+                }
+            });
+
+            // 从剪贴板粘贴
+            pasteBtn.addEventListener('click', function () {
+                if (hasImage()) {
+                    return;
+                }
+                navigator.clipboard.read().then(clipboardItems => {
+                    for (const clipboardItem of clipboardItems) {
+                        for (const type of clipboardItem.types) {
+                            if (type.startsWith('image/')) {
+                                clipboardItem.getType(type).then(blob => {
+                                    const reader = new FileReader();
+                                    reader.onload = function (event) {
+                                        displayImage(event.target.result);
+                                    };
+                                    reader.readAsDataURL(blob);
+                                });
+                                return;
+                            }
+                        }
+                    }
+                    alert('剪贴板中没有找到图片');
+                }).catch(err => {
+                    console.error('无法读取剪贴板:', err);
+                    alert('无法访问剪贴板，请检查浏览器权限或尝试使用上传功能');
+                });
+            });
+
+            // 拖拽上传
+            imageContainer.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                if (hasImage()) {
+                    e.stopPropagation();
+                    return false;
+                }
+                imageContainer.classList.add('drag-over');
+            });
+
+            imageContainer.addEventListener('dragleave', function () {
+                imageContainer.classList.remove('drag-over');
+            });
+
+            imageContainer.addEventListener('drop', function (e) {
+                e.preventDefault();
+                imageContainer.classList.remove('drag-over');
+                if (hasImage()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    const file = e.dataTransfer.files[0];
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = function (event) {
+                            displayImage(event.target.result);
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        alert('请拖入图片文件');
+                    }
+                }
+            });
+
+            // 缩放控制
+            function updateImageTransform() {
+                displayedImage.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            }
+
+            zoomInBtn.addEventListener('click', function () {
+                scale *= 1.2;
+                updateImageTransform();
+            });
+
+            zoomOutBtn.addEventListener('click', function () {
+                scale /= 1.2;
+                updateImageTransform();
+            });
+
+            resetZoomBtn.addEventListener('click', function () {
+                resetImageState();
+            });
+
+            // 图片拖动
+            imageContainer.addEventListener('mousedown', function (e) {
+                if (displayedImage.src && displayedImage.src !== '') {
+                    e.preventDefault();
+                    isDragging = true;
+                    startX = e.clientX - translateX;
+                    startY = e.clientY - translateY;
+                    displayedImage.style.cursor = 'grabbing';
+                }
+            });
+
+            document.addEventListener('mousemove', function (e) {
+                if (!isDragging) return;
+                // e.preventDefault();
+                translateX = e.clientX - startX;
+                translateY = e.clientY - startY;
+                updateImageTransform();
+            });
+
+            document.addEventListener('mouseup', function () {
+                isDragging = false;
+                displayedImage.style.cursor = 'grab';
+            });
+
+            // 触摸屏支持
+            imageContainer.addEventListener('touchstart', function (e) {
+                if (displayedImage.src && displayedImage.src !== '') {
+                    e.preventDefault();
+                    isDragging = true;
+                    const touch = e.touches[0];
+                    startX = touch.clientX - translateX;
+                    startY = touch.clientY - translateY;
+                }
+            }, { passive: false });
+
+            document.addEventListener('touchmove', function (e) {
+                if (!isDragging) return;
+                e.preventDefault();
+                const touch = e.touches[0];
+                translateX = touch.clientX - startX;
+                translateY = touch.clientY - startY;
+                updateImageTransform();
+            }, { passive: false });
+
+            document.addEventListener('touchend', function () {
+                isDragging = false;
+            });
+
+            // 初始化检查
+            updateUI();
+
+            // 禁用图片的默认拖拽行为
+            displayedImage.addEventListener('dragstart', function (e) {
+                e.preventDefault();
+                return false;
+            });
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>双视图图片查看器</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            height: 100vh;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        .main-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        .horizontal-layout {
+            flex-direction: row;
+        }
+
+        .vertical-layout {
+            flex-direction: column;
+        }
+
+        .view-container {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .view-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            pointer-events: auto;
+        }
+
+        .divider {
+            position: relative;
+            background: #ddd;
+            z-index: 100;
+        }
+
+        .horizontal-divider {
+            width: 8px;
+            height: 100%;
+            cursor: col-resize;
+        }
+
+        .vertical-divider {
+            height: 8px;
+            width: 100%;
+            cursor: row-resize;
+        }
+
+        .drag-handle {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 110;
+            user-select: none;
+        }
+
+        .horizontal-layout .drag-handle {
+            flex-direction: column;
+            /* 沿竖直方向 */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .vertical-layout .drag-handle {
+            flex-direction: row;
+            /* 沿水平方向 */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .drag-icon,
+        .rotate-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: white;
+            margin: 4px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .drag-icon {
+            background: #4CAF50;
+            cursor: grab;
+        }
+
+        .rotate-icon {
+            background: #2196F3;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main-container horizontal-layout" id="mainContainer">
+        <div class="view-container" id="view1">
+            <iframe src="./img-viewer.html"></iframe>
+        </div>
+        <div class="divider horizontal-divider" id="divider">
+            <div class="drag-handle" id="dragHandle">
+                <div class="drag-icon" id="dragIcon">≡</div>
+                <div class="rotate-icon" id="rotateBtn">↻</div>
+            </div>
+        </div>
+        <div class="view-container" id="view2">
+            <iframe src="./img-viewer.html"></iframe>
+        </div>
+    </div>
+
+    <script>
+        class SplitViewManager {
+            constructor() {
+                this.container = document.getElementById('mainContainer');
+                this.view1 = document.getElementById('view1');
+                this.view2 = document.getElementById('view2');
+                this.divider = document.getElementById('divider');
+                this.dragHandle = document.getElementById('dragHandle');
+                this.dragIcon = document.getElementById('dragIcon');
+                this.rotateBtn = document.getElementById('rotateBtn');
+                this.iframes = document.querySelectorAll('iframe');
+
+                this.isHorizontal = true;
+                this.ratio = 0.5;
+                this.isDragging = false;
+                this.startPos = 0;
+                this.containerSize = 0;
+                this.animationId = null;
+
+                this.init();
+            }
+
+            init() {
+                this.setupEventListeners();
+                this.updateLayout();
+            }
+
+            setupEventListeners() {
+                // 拖拽事件
+                this.dragIcon.addEventListener('mousedown', (e) => this.startDrag(e));
+                this.dragIcon.addEventListener('touchstart', (e) => this.startDrag(e), { passive: false });
+
+                document.addEventListener('mousemove', (e) => this.handleDrag(e));
+                document.addEventListener('touchmove', (e) => this.handleDrag(e), { passive: false });
+
+                document.addEventListener('mouseup', () => this.endDrag());
+                document.addEventListener('touchend', () => this.endDrag());
+
+                // 旋转按钮
+                this.rotateBtn.addEventListener('click', () => this.rotateLayout());
+
+                // 窗口尺寸变化
+                window.addEventListener('resize', () => this.updateLayout());
+            }
+
+            getClientPos(e) {
+                return e.touches ? (this.isHorizontal ? e.touches[0].clientX : e.touches[0].clientY)
+                    : (this.isHorizontal ? e.clientX : e.clientY);
+            }
+
+            startDrag(e) {
+                e.preventDefault();
+                this.isDragging = true;
+                this.startPos = this.getClientPos(e);
+                this.containerSize = this.isHorizontal ? this.container.offsetWidth : this.container.offsetHeight;
+
+                this.iframes.forEach(iframe => iframe.style.pointerEvents = 'none');
+
+                document.body.style.cursor = this.isHorizontal ? 'col-resize' : 'row-resize';
+                this.dragIcon.style.cursor = 'grabbing';
+            }
+
+            handleDrag(e) {
+                if (!this.isDragging) return;
+                e.preventDefault();
+
+                if (this.animationId) cancelAnimationFrame(this.animationId);
+
+                this.animationId = requestAnimationFrame(() => {
+                    const currentPos = this.getClientPos(e);
+                    const delta = currentPos - this.startPos;
+                    const availableSpace = this.containerSize - 8;
+
+                    this.ratio = Math.max(0.1, Math.min(0.9, this.ratio + delta / availableSpace));
+                    this.updateLayout();
+                    this.startPos = currentPos;
+                });
+            }
+
+            endDrag() {
+                if (!this.isDragging) return;
+                this.isDragging = false;
+                cancelAnimationFrame(this.animationId);
+
+                this.iframes.forEach(iframe => iframe.style.pointerEvents = 'auto');
+                document.body.style.cursor = '';
+                this.dragIcon.style.cursor = 'grab';
+            }
+
+            rotateLayout() {
+                const view1Size = this.isHorizontal ? this.view1.offsetWidth : this.view1.offsetHeight;
+                const view2Size = this.isHorizontal ? this.view2.offsetWidth : this.view2.offsetHeight;
+                const totalSize = view1Size + view2Size + 8;
+
+                this.isHorizontal = !this.isHorizontal;
+                this.container.className = this.isHorizontal ? 'main-container horizontal-layout' : 'main-container vertical-layout';
+                this.divider.className = this.isHorizontal ? 'divider horizontal-divider' : 'divider vertical-divider';
+
+                const newTotalSize = this.isHorizontal ? this.container.offsetWidth : this.container.offsetHeight;
+                const sizeRatio = view1Size / totalSize;
+                this.ratio = sizeRatio * (newTotalSize / (newTotalSize - 8));
+
+                this.updateLayout();
+            }
+
+            updateLayout() {
+                const dividerSize = 8;
+                const containerSize = this.isHorizontal ? this.container.offsetWidth : this.container.offsetHeight;
+                const availableSpace = containerSize - dividerSize;
+
+                const view1Size = availableSpace * this.ratio;
+                const view2Size = availableSpace - view1Size;
+
+                if (this.isHorizontal) {
+                    this.view1.style.width = `${view1Size}px`;
+                    this.view2.style.width = `${view2Size}px`;
+                    this.view1.style.height = '100%';
+                    this.view2.style.height = '100%';
+                } else {
+                    this.view1.style.height = `${view1Size}px`;
+                    this.view2.style.height = `${view2Size}px`;
+                    this.view1.style.width = '100%';
+                    this.view2.style.width = '100%';
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            new SplitViewManager();
+        });
+    </script>
+</body>
+
+</html>
